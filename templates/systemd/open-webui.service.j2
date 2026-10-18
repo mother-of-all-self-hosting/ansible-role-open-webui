@@ -1,0 +1,70 @@
+{#
+SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+SPDX-FileCopyrightText: 2024 noah
+SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+SPDX-FileCopyrightText: 2026 spatterlight
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+#}
+
+[Unit]
+Description=Open WebUI ({{ open_webui_identifier }})
+{% for service in open_webui_systemd_required_services_list %}
+Requires={{ service }}
+After={{ service }}
+{% endfor %}
+{% for service in open_webui_systemd_wanted_services_list %}
+Wants={{ service }}
+{% endfor %}
+DefaultDependencies=no
+
+[Service]
+Type=simple
+Environment="HOME={{ devture_systemd_docker_base_systemd_unit_home_path }}"
+ExecStartPre={{ devture_systemd_docker_base_host_command_sh }} -c '{{ open_webui_container_cleanup_command | trim | replace("\n", " ") }}'
+
+ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
+      --rm \
+      --name={{ open_webui_identifier }} \
+      --log-driver=none \
+      --user={{ open_webui_uid }}:{{ open_webui_gid }} \
+      --cap-drop=ALL \
+      --read-only \
+      --tmpfs=/tmp:rw,noexec,nosuid,size={{ open_webui_container_tmpfs_tmp_size }} \
+      --tmpfs=/app/backend/open_webui/static:rw,noexec,nosuid,size={{ open_webui_container_tmpfs_static_size }},uid={{ open_webui_uid }},gid={{ open_webui_gid }} \
+      --network={{ open_webui_container_network }} \
+      {% if open_webui_container_http_host_bind_port %}
+      -p {{ open_webui_container_http_host_bind_port }}:{{ open_webui_container_http_port }} \
+      {% endif %}
+      --env-file={{ open_webui_base_path }}/env \
+      --label-file={{ open_webui_base_path }}/labels \
+      --mount type=bind,src={{ open_webui_data_path }},dst=/app/backend/data \
+      {% if open_webui_database_type == 'postgres' and open_webui_database_socket_enabled and open_webui_database_socket_path_host != '' %}
+      --mount type=bind,src={{ open_webui_database_socket_path_host }},dst={{ open_webui_database_socket_path_container }} \
+      {% endif %}
+      {% for volume in open_webui_container_additional_volumes %}
+      --mount type={{ volume.type | default('bind' if '/' in volume.src else 'volume') }},src={{ volume.src }},dst={{ volume.dst }}{{ (',' + volume.options) if volume.options | default('') else '' }} \
+      {% endfor %}
+      {% for arg in open_webui_container_extra_arguments %}
+      {{ arg }} \
+      {% endfor %}
+      {{ open_webui_container_image }} \
+      {% for arg in open_webui_process_extra_arguments %}
+      {{ arg }} \
+      {% endfor %}
+
+{% for network in open_webui_container_additional_networks %}
+ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} network connect {{ network }} {{ open_webui_identifier }}
+{% endfor %}
+
+ExecStart={{ devture_systemd_docker_base_host_command_docker }} start --attach {{ open_webui_identifier }}
+
+ExecStop=-{{ devture_systemd_docker_base_host_command_sh }} -c '{{ devture_systemd_docker_base_host_command_docker }} stop -t {{ devture_systemd_docker_base_container_stop_grace_time_seconds }} {{ open_webui_identifier }} 2>/dev/null || true'
+ExecStop=-{{ devture_systemd_docker_base_host_command_sh }} -c '{{ devture_systemd_docker_base_host_command_docker }} rm {{ open_webui_identifier }} 2>/dev/null || true'
+
+Restart=always
+RestartSec=30
+SyslogIdentifier={{ open_webui_identifier }}
+
+[Install]
+WantedBy=multi-user.target

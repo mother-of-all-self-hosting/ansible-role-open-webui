@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2024 noah
+# SPDX-FileCopyrightText: 2025 Suguru Hirahara
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Check existence of Open WebUI systemd service
+  ansible.builtin.stat:
+    path: "{{ devture_systemd_docker_base_systemd_path }}/{{ open_webui_identifier }}.service"
+  register: open_webui_service_stat
+
+- name: Uninstall Open WebUI systemd services and files
+  when: open_webui_service_stat.stat.exists | bool
+  block:
+    - name: Ensure Open WebUI systemd service is stopped
+      ansible.builtin.service:
+        name: "{{ open_webui_identifier }}"
+        state: stopped
+        enabled: false
+        daemon_reload: true
+
+    - name: Ensure Open WebUI systemd service does not exist
+      ansible.builtin.file:
+        path: "{{ devture_systemd_docker_base_systemd_path }}/{{ open_webui_identifier }}.service"
+        state: absent
+
+    - name: Ensure Open WebUI support files do not exist
+      ansible.builtin.file:
+        path: "{{ open_webui_base_path }}/{{ item }}"
+        state: absent
+      with_items:
+        - env
+        - labels
+
+    - name: Ensure Open WebUI local data path does not exist if empty
+      ansible.builtin.command:
+        cmd: "rmdir {{ open_webui_data_path }}"
+      register: open_webui_data_path_deletion_result
+      changed_when: open_webui_data_path_deletion_result.rc == 0
+      failed_when: false
+
+    - name: Ensure Open WebUI base path does not exist if empty
+      ansible.builtin.command:
+        cmd: "rmdir {{ open_webui_base_path }}"
+      register: open_webui_base_path_deletion_result
+      changed_when: open_webui_base_path_deletion_result.rc == 0
+      failed_when: false
+
+    - name: Ensure Open WebUI container network does not exist
+      when: open_webui_container_network_deletion_enabled
+      block:
+        - name: Ensure Open WebUI container network does not exist via community.docker.docker_network
+          when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+          community.docker.docker_network:
+            name: "{{ open_webui_container_network }}"
+            state: absent
+          register: open_webui_network_deletion_result
+
+        - name: Ensure Open WebUI container network does not exist via ansible.builtin.command
+          when: devture_systemd_docker_base_container_network_creation_method == 'command'
+          ansible.builtin.command:
+            cmd: >-
+              {{ devture_systemd_docker_base_host_command_docker }} network rm
+              {{ open_webui_container_network }}
+          register: open_webui_network_deletion_result
+          changed_when: open_webui_container_network in open_webui_network_deletion_result.stdout
+
+- name: Check existence of Open WebUI local data path
+  ansible.builtin.stat:
+    path: "{{ open_webui_data_path }}"
+  register: open_webui_data_path_stat
+
+# We just want to notify the user. Deleting data is too destructive.
+- name: Inject the message about the remaining Open WebUI local data path
+  when: open_webui_data_path_stat.stat.exists | bool
+  ansible.builtin.set_fact:
+    devture_playbook_runtime_messages_list: |
+      {{
+        devture_playbook_runtime_messages_list | default([])
+        +
+        [
+          "Note: As the local Open WebUI instance has been removed, some old data remains in `" + open_webui_data_path + "`. Feel free to delete it."
+        ]
+      }}

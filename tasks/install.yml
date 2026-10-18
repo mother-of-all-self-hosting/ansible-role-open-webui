@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2024 noah
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Ensure Open WebUI paths exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: "{{ open_webui_uid }}"
+    group: "{{ open_webui_gid }}"
+  with_items:
+    - "{{ open_webui_base_path }}"
+    - "{{ open_webui_data_path }}"
+
+- name: Ensure Open WebUI support files installed
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/{{ item }}.j2"
+    dest: "{{ open_webui_base_path }}/{{ item }}"
+    mode: "0640"
+    owner: "{{ open_webui_uid }}"
+    group: "{{ open_webui_gid }}"
+  with_items:
+    - env
+    - labels
+  register: open_webui_support_files_result
+
+- name: Ensure Open WebUI container image is pulled via community.docker.docker_image_pull
+  when: devture_systemd_docker_base_container_image_pull_method == 'ansible-module'
+  community.docker.docker_image_pull:
+    name: "{{ open_webui_container_image }}"
+    pull: always
+  register: open_webui_container_image_pull_result_ansible_module
+  retries: "{{ devture_playbook_help_container_retries_count }}"
+  delay: "{{ devture_playbook_help_container_retries_delay }}"
+  until: open_webui_container_image_pull_result_ansible_module is not failed
+
+- name: Ensure Open WebUI container image is pulled via ansible.builtin.command
+  when: devture_systemd_docker_base_container_image_pull_method == 'command'
+  ansible.builtin.command:
+    cmd: "{{ devture_systemd_docker_base_host_command_docker }} pull {{ open_webui_container_image }}"
+  register: open_webui_container_image_pull_result_command
+  retries: "{{ devture_playbook_help_container_retries_count }}"
+  delay: "{{ devture_playbook_help_container_retries_delay }}"
+  until: open_webui_container_image_pull_result_command is not failed
+  changed_when: "'Downloaded newer image' in open_webui_container_image_pull_result_command.stdout"
+
+- name: Ensure Open WebUI container network is created via community.docker.docker_network
+  when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'
+  community.docker.docker_network:
+    enable_ipv6: "{{ devture_systemd_docker_base_ipv6_enabled }}"
+    name: "{{ open_webui_container_network }}"
+    driver: bridge
+    driver_options: "{{ devture_systemd_docker_base_container_networks_driver_options }}"
+  register: open_webui_network_creation_result
+
+- name: Ensure Open WebUI container network is created via ansible.builtin.command
+  when: devture_systemd_docker_base_container_network_creation_method == 'command'
+  ansible.builtin.command:
+    cmd: >-
+      {{ devture_systemd_docker_base_host_command_docker }} network create
+      {% if devture_systemd_docker_base_ipv6_enabled %}--ipv6{% endif %}
+      {{ devture_systemd_docker_base_container_networks_driver_options_string }}
+      {{ open_webui_container_network }}
+  register: open_webui_network_creation_result
+  changed_when: open_webui_network_creation_result.rc == 0
+  failed_when: open_webui_network_creation_result.rc != 0 and 'already exists' not in open_webui_network_creation_result.stderr
+
+- name: Ensure Open WebUI systemd service is present
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/systemd/open-webui.service.j2"
+    dest: "{{ devture_systemd_docker_base_systemd_path }}/{{ open_webui_identifier }}.service"
+    mode: "0644"
+  register: open_webui_systemd_service_result
+
+- name: Determine whether Open WebUI needs a restart
+  ansible.builtin.set_fact:
+    open_webui_restart_necessary: >-
+      {{
+        open_webui_support_files_result.changed | default(false)
+        or open_webui_systemd_service_result.changed | default(false)
+        or open_webui_container_image_pull_result_ansible_module.changed | default(false)
+        or open_webui_container_image_pull_result_command.changed | default(false)
+      }}

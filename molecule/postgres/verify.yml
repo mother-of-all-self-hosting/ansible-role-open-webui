@@ -1,0 +1,312 @@
+# SPDX-FileCopyrightText: 2026 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2026 spatterlight
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Verify Open WebUI
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    open_webui_verify_base_url: "http://localhost:{{ open_webui_molecule_http_bind_port }}"
+
+    # Open WebUI has no unauthenticated API to speak of, so the scenario signs up
+    # an account of its own. The first account Open WebUI ever sees becomes its
+    # administrator, which is what the assertions below rely on.
+    open_webui_verify_name: Molecule
+    open_webui_verify_email: molecule@example.com
+    open_webui_verify_password: molecule-password-1234
+
+    open_webui_verify_units:
+      - open-webui.service
+      - postgres.service
+
+  tasks:
+    - name: Verify that Open WebUI works
+      block:
+        # The role is not included in this playbook, so its defaults are not in
+        # scope. Reading defaults/main.yml directly ties the version assertion
+        # below.
+        - name: Load the role defaults
+          ansible.builtin.include_vars:
+            file: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}/defaults/main.yml"
+            name: open_webui_defaults
+
+        - name: Wait for the Open WebUI systemd services to become active (up to 180s each)
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+          register: open_webui_services
+          until: open_webui_services.status.ActiveState == 'active'
+          retries: 36
+          delay: 5
+          loop: "{{ open_webui_verify_units }}"
+          # So that giving up is reported by the assertion below rather than as a
+          # wall of systemd unit properties.
+          failed_when: false
+
+        # `Restart=always` in the systemd unit means that even a container which crashes
+        # and gets restarted reads as active here, so this is a precondition rather than
+        # a result.
+        - name: Assert the Open WebUI systemd services are active
+          ansible.builtin.assert:
+            that: open_webui_services.results | map(attribute='status.ActiveState') | unique | list == ['active']
+            fail_msg: >-
+              Not every service is active:
+              {{ dict(open_webui_verify_units | zip(open_webui_services.results | map(attribute='status.ActiveState'))) }}
+            success_msg: "Every systemd service is active"
+
+        - name: Retrieve the Open WebUI systemd services log for debugging
+          when: open_webui_debug_service_enabled | bool
+          ansible.builtin.command:
+            cmd: "journalctl --no-pager --output=cat --unit={{ item }}"
+          changed_when: false
+          loop: "{{ open_webui_verify_units }}"
+
+        # The readiness gate for everything below. On its first start Open WebUI
+        # downloads the embedding model it uses for documents into its data
+        # directory before it starts serving, so this is where the waiting happens.
+        - name: Wait for Open WebUI to report itself healthy (up to 15m)
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/health"
+            method: GET
+            follow_redirects: none
+            status_code: [200, 404, 500, 502, 503]
+            return_content: true
+          register: open_webui_health
+          until: open_webui_health.status == 200 and (open_webui_health.json.status | default(false))
+          retries: 180
+          delay: 5
+          changed_when: false
+
+        - name: Retrieve the version reported by Open WebUI
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/api/version"
+            method: GET
+            follow_redirects: none
+            return_content: true
+          register: open_webui_api_version
+          changed_when: false
+
+        - name: Assert the running Open WebUI is the version this role installs
+          ansible.builtin.assert:
+            that:
+              - open_webui_api_version.json.version == open_webui_defaults.open_webui_version
+            fail_msg: "Open WebUI reports {{ open_webui_api_version.json.version | default('none') }}, expected {{ open_webui_defaults.open_webui_version }}"
+            success_msg: "Open WebUI reports {{ open_webui_api_version.json.version }}"
+
+        # Open WebUI rebuilds its static files directory on every start. Under the
+        # read-only root filesystem that only works on the tmpfs the role mounts
+        # there, so a favicon being served is what shows that the rebuild succeeded.
+        - name: Retrieve a static file from Open WebUI
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/static/favicon.png"
+            method: GET
+            follow_redirects: none
+            status_code: [200, 404]
+          register: open_webui_static_favicon
+          changed_when: false
+
+        - name: Assert Open WebUI serves its static files
+          ansible.builtin.assert:
+            that:
+              - open_webui_static_favicon.status == 200
+              - open_webui_static_favicon.content_type is match('image/png')
+            fail_msg: "/static/favicon.png returned {{ open_webui_static_favicon.status }} ({{ open_webui_static_favicon.content_type | default('no content type') }})"
+            success_msg: "/static/favicon.png is served as {{ open_webui_static_favicon.content_type }}"
+
+        - name: Sign up the Open WebUI account used by this scenario
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/api/v1/auths/signup"
+            method: POST
+            follow_redirects: none
+            body_format: json
+            body:
+              name: "{{ open_webui_verify_name }}"
+              email: "{{ open_webui_verify_email }}"
+              password: "{{ open_webui_verify_password }}"
+            status_code: [200, 400, 403]
+            return_content: true
+          register: open_webui_signup
+          changed_when: false
+          no_log: true  # the response carries a session token
+
+        - name: Assert the first account to sign up became the administrator
+          ansible.builtin.assert:
+            that:
+              - open_webui_signup.status == 200
+              - open_webui_signup.json.role == 'admin'
+              - open_webui_signup.json.email == open_webui_verify_email
+              - open_webui_signup.json.token | length > 0
+            fail_msg: "Signing up returned {{ open_webui_signup.status }} with role {{ open_webui_signup.json.role | default('none') }}"
+            success_msg: "Signing up created {{ open_webui_signup.json.email }} as {{ open_webui_signup.json.role }}"
+
+        # Signing up hands out a token without ever checking a password, so the
+        # sign-in is what proves that the account was stored and can be read back.
+        - name: Sign in to Open WebUI with the account
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/api/v1/auths/signin"
+            method: POST
+            follow_redirects: none
+            body_format: json
+            body:
+              email: "{{ open_webui_verify_email }}"
+              password: "{{ open_webui_verify_password }}"
+            status_code: [200, 400, 401, 403]
+            return_content: true
+          register: open_webui_signin
+          changed_when: false
+          no_log: true  # the response carries a session token
+
+        - name: Assert the account can sign in
+          ansible.builtin.assert:
+            that:
+              - open_webui_signin.status == 200
+              - open_webui_signin.json.role == 'admin'
+              - open_webui_signin.json.token | length > 0
+            fail_msg: "Signing in returned {{ open_webui_signin.status }}"
+            success_msg: "Signing in as {{ open_webui_verify_email }} works"
+
+        # Open WebUI reads its connections from the environment on its first
+        # start. The Ollama connection the role configured coming back from the
+        # admin API is what proves that the role's environment file reached the
+        # process, rather than merely the container.
+        - name: Retrieve the Ollama connection configured in Open WebUI
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/ollama/config"
+            method: GET
+            follow_redirects: none
+            headers:
+              Authorization: "Bearer {{ open_webui_signin.json.token }}"
+            return_content: true
+          register: open_webui_ollama_config
+          changed_when: false
+
+        - name: Assert the Ollama connection configured by the role reached Open WebUI
+          ansible.builtin.assert:
+            that:
+              - open_webui_ollama_config.json.ENABLE_OLLAMA_API
+              - open_webui_ollama_config.json.OLLAMA_BASE_URLS == [open_webui_environment_variables_ollama_base_url]
+            fail_msg: "Open WebUI reports the Ollama connection as {{ open_webui_ollama_config.json }}"
+            success_msg: "Open WebUI connects to Ollama at {{ open_webui_ollama_config.json.OLLAMA_BASE_URLS | join(', ') }}"
+
+        # The whole point of this scenario. Reading the account straight out of
+        # Postgres proves that the database URL the role assembled reached the
+        # process and that Open WebUI stores its data there over the Unix socket,
+        # rather than falling back to SQLite.
+        - name: Read the account back from the Postgres database
+          ansible.builtin.command:
+            cmd: >-
+              docker exec -e PGPASSWORD={{ open_webui_database_password | quote }}
+              {{ postgres_identifier | default('postgres') }}
+              psql -U {{ open_webui_database_username | quote }} -d {{ open_webui_database_name | quote }}
+              -tAc "SELECT role FROM \"user\" WHERE email = '{{ open_webui_verify_email }}'"
+          register: open_webui_database_records
+          changed_when: false
+          failed_when: false
+
+        - name: Assert Open WebUI keeps its data in the Postgres database
+          ansible.builtin.assert:
+            that:
+              - open_webui_database_records.rc == 0
+              - open_webui_database_records.stdout | trim == 'admin'
+            fail_msg: >-
+              Looking up {{ open_webui_verify_email }} in Postgres returned {{ open_webui_database_records.rc }}:
+              {{ open_webui_database_records.stdout | default('') }} {{ open_webui_database_records.stderr | default('') }}
+            success_msg: "Postgres holds {{ open_webui_verify_email }} as {{ open_webui_database_records.stdout | trim }}"
+
+        # A database URL that never reached the process would have Open WebUI
+        # silently create a SQLite database instead.
+        - name: Check for an Open WebUI SQLite database
+          ansible.builtin.stat:
+            path: "/{{ open_webui_defaults.open_webui_identifier }}/data/webui.db"
+          register: open_webui_sqlite_database
+
+        - name: Assert Open WebUI did not create a SQLite database
+          ansible.builtin.assert:
+            that: not open_webui_sqlite_database.stat.exists
+            fail_msg: "/{{ open_webui_defaults.open_webui_identifier }}/data/webui.db exists, so Open WebUI is not using Postgres alone"
+            success_msg: "There is no SQLite database next to the Postgres one"
+
+        - name: Inspect the Open WebUI container
+          ansible.builtin.command:
+            cmd: "docker container inspect {{ open_webui_defaults.open_webui_identifier }}"
+          register: open_webui_container_raw
+          changed_when: false
+          no_log: true  # the environment carries the secret key
+
+        - name: Assert the Open WebUI container runs with the role's hardening
+          ansible.builtin.assert:
+            that:
+              - (open_webui_container_raw.stdout | from_json | first).HostConfig.ReadonlyRootfs
+              - (open_webui_container_raw.stdout | from_json | first).HostConfig.CapDrop == ['ALL']
+              - (open_webui_container_raw.stdout | from_json | first).Config.User == (open_webui_uid | string) + ':' + (open_webui_gid | string)
+            fail_msg: "The Open WebUI container does not run read-only, without capabilities, as {{ open_webui_uid }}:{{ open_webui_gid }}"
+            success_msg: "The Open WebUI container runs read-only, without capabilities, as {{ open_webui_uid }}:{{ open_webui_gid }}"
+
+        - name: Verify nothing was quietly restarting while all of that was being checked
+          when: "open_webui_restarts_check_enabled | bool"
+          block:
+            # `Restart=always` means the unit reads `active` while it is crash-looping,
+            # so `active` on its own says very little. The window has to be watched with
+            # everything already answering.
+            - name: Sample the restart counters
+              ansible.builtin.systemd_service:
+                name: "{{ item }}"
+              register: open_webui_restarts_before
+              loop: "{{ open_webui_verify_units }}"
+
+            # Comfortably longer than the unit's `RestartSec=30`, so a crash loop has to
+            # tick at least once inside the window.
+            - name: Watch the services for 45 seconds
+              ansible.builtin.pause:
+                seconds: 45
+
+            - name: Sample the restart counters again
+              ansible.builtin.systemd_service:
+                name: "{{ item }}"
+              register: open_webui_restarts_after
+              loop: "{{ open_webui_verify_units }}"
+
+            - name: Assert no service restarted while it was up
+              ansible.builtin.assert:
+                that:
+                  - open_webui_restarts_after.results | map(attribute='status.NRestarts') | list == open_webui_restarts_before.results | map(attribute='status.NRestarts') | list
+                  - open_webui_restarts_after.results | map(attribute='status.ActiveState') | unique | list == ['active']
+                fail_msg: >-
+                  A service restarted while it was supposedly up, so `active` was hiding a crash loop.
+                  Before:
+                  {% for unit, restarts in open_webui_verify_units | zip(open_webui_restarts_before.results | map(attribute='status.NRestarts')) %}{{ restarts }} ({{ unit }}){% if not loop.last %}, {% endif %}{% endfor %},
+                  after:
+                  {% for unit, restarts in open_webui_verify_units | zip(open_webui_restarts_after.results | map(attribute='status.NRestarts')) %}{{ restarts }} ({{ unit }}){% if not loop.last %}, {% endif %}{% endfor %}
+                success_msg: >-
+                  None of the services restarted over 45 seconds of watching (restarts so far:
+                  {% for unit, restarts in open_webui_verify_units | zip(open_webui_restarts_after.results | map(attribute='status.NRestarts')) %}{{ restarts }} ({{ unit }}){% if not loop.last %}, {% endif %}{% endfor %})
+
+        - name: Show the Open WebUI verification summary
+          ansible.builtin.debug:
+            msg:
+              - "Open WebUI systemd: {% for unit, state in open_webui_verify_units | zip(open_webui_services.results | map(attribute='status.ActiveState')) %}{{ unit }} ({{ state }}){% if not loop.last %}, {% endif %}{% endfor %}"
+              - "Open WebUI restarts: {% for unit, restarts in open_webui_verify_units | zip(open_webui_restarts_after.results | map(attribute='status.NRestarts')) %}{{ restarts }} ({{ unit }}){% if not loop.last %}, {% endif %}{% endfor %}"
+              - "Open WebUI version: {{ open_webui_api_version.json.version }}"
+              - "Open WebUI administrator: {{ open_webui_signin.json.email }} ({{ open_webui_signin.json.role }})"
+              - "Open WebUI Ollama connection: {{ open_webui_ollama_config.json.OLLAMA_BASE_URLS | join(', ') }}"
+              - "Open WebUI database: Postgres ({{ open_webui_database_name }})"
+
+      rescue:
+        # Whatever went wrong, the reason is almost always in the systemd service log.
+        - name: Retrieve the Open WebUI systemd service log
+          ansible.builtin.command:
+            cmd: journalctl --no-pager --output=cat --unit=open-webui.service
+          register: open_webui_service_log
+          changed_when: false
+
+        - name: Show the Open WebUI systemd service log
+          ansible.builtin.debug:
+            var: open_webui_service_log.stdout_lines
+
+        - name: Fail because verification did not pass
+          ansible.builtin.fail:
+            msg: "Open WebUI verification failed. The systemd service log is printed above."
