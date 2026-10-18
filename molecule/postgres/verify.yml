@@ -20,6 +20,21 @@
     open_webui_verify_email: molecule@example.com
     open_webui_verify_password: molecule-password-1234
 
+    # A small, pure-Python package which the image does not ship, for the tool
+    # created below to require.
+    open_webui_verify_tool_requirement: pyjokes
+    open_webui_verify_tool_content: |
+      """
+      title: Molecule requirements
+      requirements: pyjokes
+      """
+      import pyjokes
+
+      class Tools:
+          def joke(self) -> str:
+              """Tell a joke."""
+              return pyjokes.get_joke()
+
     open_webui_verify_units:
       - open-webui.service
       - postgres.service
@@ -192,6 +207,73 @@
             fail_msg: "Open WebUI reports the Ollama connection as {{ open_webui_ollama_config.json }}"
             success_msg: "Open WebUI connects to Ollama at {{ open_webui_ollama_config.json.OLLAMA_BASE_URLS | join(', ') }}"
 
+        # Python only looks for packages installed for the user in the directory
+        # for its own version, which the role creates in advance from
+        # `open_webui_python_version`. An image with a different Python version
+        # would leave that directory unused.
+        - name: Retrieve where Python looks for packages installed for the user
+          ansible.builtin.command:
+            cmd: >-
+              docker exec {{ open_webui_defaults.open_webui_identifier }}
+              python -c "import site; print(site.getusersitepackages())"
+          register: open_webui_user_site_packages
+          changed_when: false
+
+        - name: Assert the role creates the directory Python looks for packages in
+          ansible.builtin.assert:
+            that:
+              - open_webui_user_site_packages.stdout == '/python/lib/python' ~ open_webui_defaults.open_webui_python_version ~ '/site-packages'
+            fail_msg: >-
+              Python looks for packages in {{ open_webui_user_site_packages.stdout }}, which does not match
+              open_webui_python_version ({{ open_webui_defaults.open_webui_python_version }})
+            success_msg: "Python looks for packages in {{ open_webui_user_site_packages.stdout }}"
+
+        # Creating a tool whose frontmatter lists a requirement makes Open WebUI
+        # install the package and then load the tool, which imports it, all in
+        # the running process. That only works if the package lands in the
+        # directory the role mounts, under the read-only root filesystem and as a
+        # user other than root.
+        - name: Create a tool which requires a Python package
+          ansible.builtin.uri:
+            url: "{{ open_webui_verify_base_url }}/api/v1/tools/create"
+            method: POST
+            follow_redirects: none
+            headers:
+              Authorization: "Bearer {{ open_webui_signin.json.token }}"
+            body_format: json
+            body:
+              id: molecule_requirements
+              name: Molecule requirements
+              content: "{{ open_webui_verify_tool_content }}"
+              meta:
+                description: A tool which requires a Python package
+            status_code: [200, 400, 401, 500]
+            timeout: 300
+            return_content: true
+          register: open_webui_tool_creation
+          changed_when: false
+
+        - name: Assert Open WebUI installed the tool's requirement and loaded the tool
+          ansible.builtin.assert:
+            that:
+              - open_webui_tool_creation.status == 200
+              - open_webui_tool_creation.json.id == 'molecule_requirements'
+            fail_msg: >-
+              Creating the tool returned {{ open_webui_tool_creation.status }}:
+              {{ open_webui_tool_creation.json.detail | default(open_webui_tool_creation.content | default('')) }}
+            success_msg: "Creating a tool which requires {{ open_webui_verify_tool_requirement }} works"
+
+        - name: Check for the tool's requirement in the Python packages directory
+          ansible.builtin.stat:
+            path: "/{{ open_webui_defaults.open_webui_identifier }}/python/lib/python{{ open_webui_defaults.open_webui_python_version }}/site-packages/{{ open_webui_verify_tool_requirement }}"
+          register: open_webui_tool_requirement_stat
+
+        - name: Assert the tool's requirement was installed in the Python packages directory
+          ansible.builtin.assert:
+            that: open_webui_tool_requirement_stat.stat.isdir | default(false)
+            fail_msg: "{{ open_webui_verify_tool_requirement }} is not in the Python packages directory"
+            success_msg: "{{ open_webui_verify_tool_requirement }} was installed in the Python packages directory"
+
         # The whole point of this scenario. Reading the account straight out of
         # Postgres proves that the database URL the role assembled reached the
         # process and that Open WebUI stores its data there over the Unix socket,
@@ -293,6 +375,7 @@
               - "Open WebUI version: {{ open_webui_api_version.json.version }}"
               - "Open WebUI administrator: {{ open_webui_signin.json.email }} ({{ open_webui_signin.json.role }})"
               - "Open WebUI Ollama connection: {{ open_webui_ollama_config.json.OLLAMA_BASE_URLS | join(', ') }}"
+              - "Open WebUI tool requirements: {{ open_webui_verify_tool_requirement }} installed in {{ open_webui_user_site_packages.stdout }}"
               - "Open WebUI database: Postgres ({{ open_webui_database_name }})"
 
       rescue:

@@ -34,6 +34,12 @@
         - env
         - labels
 
+    # Open WebUI installs these again whenever it loads a tool or function which requires them.
+    - name: Ensure Open WebUI Python packages path does not exist
+      ansible.builtin.file:
+        path: "{{ open_webui_python_path }}"
+        state: absent
+
     - name: Ensure Open WebUI local data path does not exist if empty
       ansible.builtin.command:
         cmd: "rmdir {{ open_webui_data_path }}"

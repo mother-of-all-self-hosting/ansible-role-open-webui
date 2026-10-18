@@ -18,6 +18,18 @@ open_webui_identifier: open-webui
 open_webui_base_path: "/{{ open_webui_identifier }}"
 open_webui_data_path: "{{ open_webui_base_path }}/data"
 
+# The path where the Python packages which tools and functions require are installed.
+#
+# Open WebUI installs the packages listed in the `requirements` of a tool's or function's frontmatter when it loads them.
+# The container's own package directory belongs to `root`, and anything installed into the container is lost
+# whenever it is recreated, so the packages are installed below this path instead (see `PYTHONUSERBASE` in `../templates/env.j2`).
+open_webui_python_path: "{{ open_webui_base_path }}/python"
+
+# The Python version of the container image.
+# Python only looks for packages below `open_webui_python_path` if the directory for its version exists
+# when Open WebUI starts, so the role creates it in advance. The Molecule scenarios check that this matches the image.
+open_webui_python_version: "3.11"
+
 # renovate: datasource=docker depName=ghcr.io/open-webui/open-webui versioning=semver
 open_webui_version: 0.12.3
 
@@ -127,6 +139,9 @@ open_webui_container_labels_additional_labels_custom: []
 
 # Specify the size of the container's tmpfs volume
 open_webui_container_tmpfs_tmp_size: 512m
+
+# Controls whether the container runs with a read-only filesystem (`--read-only`).
+open_webui_container_read_only_enabled: true
 
 # Specify the size of the tmpfs volume for Open WebUI's static files directory.
 # Open WebUI rebuilds that directory inside its application directory from its frontend build on every start,

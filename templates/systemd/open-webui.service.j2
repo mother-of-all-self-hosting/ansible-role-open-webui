@@ -29,7 +29,9 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       --log-driver=none \
       --user={{ open_webui_uid }}:{{ open_webui_gid }} \
       --cap-drop=ALL \
+      {% if open_webui_container_read_only_enabled %}
       --read-only \
+      {% endif %}
       --tmpfs=/tmp:rw,noexec,nosuid,size={{ open_webui_container_tmpfs_tmp_size }} \
       --tmpfs=/app/backend/open_webui/static:rw,noexec,nosuid,size={{ open_webui_container_tmpfs_static_size }},uid={{ open_webui_uid }},gid={{ open_webui_gid }} \
       --network={{ open_webui_container_network }} \
@@ -39,6 +41,7 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       --env-file={{ open_webui_base_path }}/env \
       --label-file={{ open_webui_base_path }}/labels \
       --mount type=bind,src={{ open_webui_data_path }},dst=/app/backend/data \
+      --mount type=bind,src={{ open_webui_python_path }},dst=/python \
       {% if open_webui_database_type == 'postgres' and open_webui_database_socket_enabled and open_webui_database_socket_path_host != '' %}
       --mount type=bind,src={{ open_webui_database_socket_path_host }},dst={{ open_webui_database_socket_path_container }} \
       {% endif %}

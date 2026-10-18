@@ -153,6 +153,16 @@ open_webui_environment_variables_openai_api_key: YOUR_API_KEY_HERE
 >[!NOTE]
 > Open WebUI reads these and many other settings from the environment only on its first start, and keeps them in its database afterwards. To change them later, use the admin panel, or set `open_webui_environment_variables_enable_persistent_config` to `false` so that the values in your `vars.yml` file are always used.
 
+### Using the Playwright web loader (optional)
+
+Open WebUI cannot install a browser for its Playwright web loader inside the container, as the container does not run as `root`. To use the loader, run a separate Playwright server and point Open WebUI to it by adding the following configuration to your `vars.yml` file (adapt to your needs):
+
+```yaml
+open_webui_environment_variables_additional_variables: |
+  WEB_LOADER_ENGINE=playwright
+  PLAYWRIGHT_WS_URL=ws://YOUR_PLAYWRIGHT_SERVER_HOSTNAME_HERE:3000
+```
+
 ### Extending the configuration
 
 There are some additional things you may wish to configure about the service.
@@ -182,10 +192,6 @@ To get started, open the URL with a web browser, and create a user or log in wit
 **Note**: on its first start, Open WebUI downloads the model it uses to search documents into its data directory, which takes a while.
 
 ## Troubleshooting
-
-### Installing a tool or function fails
-
-This role runs the container with a read-only root filesystem. Open WebUI installs the Python packages listed in the `requirements` of a tool's or function's frontmatter into the container's root filesystem, so installing a tool or function which has any fails. For the same reason, the Playwright web loader (`WEB_LOADER_ENGINE=playwright`) cannot install its browser and keeps the service from starting.
 
 ### Check the service's logs
 

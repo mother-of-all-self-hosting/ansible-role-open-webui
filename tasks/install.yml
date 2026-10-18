@@ -15,6 +15,7 @@
   with_items:
     - "{{ open_webui_base_path }}"
     - "{{ open_webui_data_path }}"
+    - "{{ open_webui_python_path }}/lib/python{{ open_webui_python_version }}/site-packages"
 
 - name: Ensure Open WebUI support files installed
   ansible.builtin.template:

@@ -21,6 +21,8 @@
     - open_webui_container_network
     - open_webui_database_type
     - open_webui_environment_variables_webui_secret_key
+    - open_webui_python_path
+    - open_webui_python_version
 
 - name: Fail if Open WebUI logging level is invalid
   ansible.builtin.fail:
