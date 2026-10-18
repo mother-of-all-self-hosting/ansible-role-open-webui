@@ -121,8 +121,14 @@ open_webui_database_port: 5432
 To connect Open WebUI to an Ollama server, add the following configuration to your `vars.yml` file (adapt to your needs):
 
 ```yaml
-open_webui_environment_variables_ollama_base_url: http://ollama:11434
+open_webui_environment_variables_ollama_base_url: http://YOUR_OLLAMA_SERVER_HOSTNAME_HERE:11434
+
+# If the server runs in a container, connect Open WebUI to its container network
+open_webui_container_additional_networks_custom:
+  - YOUR_OLLAMA_SERVER_CONTAINER_NETWORK_HERE
 ```
+
+If you run Ollama with [ansible-role-ollama](https://github.com/mother-of-all-self-hosting/ansible-role-ollama), both the container name and the container network are `ollama` by default (`mash-ollama` with the MASH playbook).
 
 To connect it to an OpenAI-compatible API, add the following configuration to your `vars.yml` file (adapt to your needs):
 
@@ -163,6 +169,10 @@ To get started, open the URL with a web browser, and create a user. The first us
 **Note**: on its first start, Open WebUI downloads the model it uses to search documents into its data directory, which takes a while.
 
 ## Troubleshooting
+
+### Installing a tool or function fails
+
+This role runs the container with a read-only root filesystem. Open WebUI installs the Python packages listed in the `requirements` of a tool's or function's frontmatter into the container's root filesystem, so installing a tool or function which has any fails. For the same reason, the Playwright web loader (`WEB_LOADER_ENGINE=playwright`) cannot install its browser and keeps the service from starting.
 
 ### Check the service's logs
 

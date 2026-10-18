@@ -49,9 +49,13 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       {{ arg }} \
       {% endfor %}
       {{ open_webui_container_image }} \
+      {% if open_webui_process_extra_arguments %}
+      {# Arguments replace the image's own command instead of extending it, so it is repeated here. #}
+      bash start.sh \
       {% for arg in open_webui_process_extra_arguments %}
       {{ arg }} \
       {% endfor %}
+      {% endif %}
 
 {% for network in open_webui_container_additional_networks %}
 ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} network connect {{ network }} {{ open_webui_identifier }}
