@@ -131,6 +131,8 @@ open_webui_container_tmpfs_tmp_size: 512m
 # Specify the size of the tmpfs volume for Open WebUI's static files directory.
 # Open WebUI rebuilds that directory inside its application directory from its frontend build on every start,
 # so it has to be writable while the rest of the container's root filesystem is read-only.
+# The tmpfs hides the Swagger UI files that the image ships there, which only the API documentation
+# at `/docs` uses, and Open WebUI serves that only with `ENV=dev`.
 open_webui_container_tmpfs_static_size: 32m
 
 # A list of extra arguments to pass to the container (`docker create` command)
@@ -139,6 +141,8 @@ open_webui_container_extra_arguments_auto: []
 open_webui_container_extra_arguments_custom: []
 
 # A list of extra arguments to pass to the process inside the container
+# They are passed to uvicorn, and replace the `--workers` and `--ws-per-message-deflate` arguments
+# which the image's start script passes otherwise.
 # Example: ['--SOME_ARGUMENT']
 open_webui_process_extra_arguments: "{{ open_webui_process_extra_arguments_auto + open_webui_process_extra_arguments_custom }}"
 open_webui_process_extra_arguments_auto: []
@@ -293,12 +297,21 @@ open_webui_environment_variables_cors_allow_origin: "{{ open_webui_environment_v
 open_webui_environment_variables_webui_session_cookie_secure: "{{ open_webui_scheme == 'https' }}"
 
 # Control whether new users can sign up.
-# The first user who signs up becomes the administrator.
+# The first user who signs up can always do so and becomes the administrator, after which Open WebUI
+# turns sign-up off until it is turned on again in the admin panel (or, while
+# `open_webui_environment_variables_enable_persistent_config` is disabled, until the next start).
 open_webui_environment_variables_enable_signup: true
 
 # Specify the role given to users who sign up
 # Valid values: admin, pending, user
 open_webui_environment_variables_default_user_role: pending
+
+# Specify the administrator's account that Open WebUI creates on its first start, before anyone can sign up.
+# It is created only while there are no users, and Open WebUI turns sign-up off afterwards.
+# No account is created when the email address or the password is empty.
+open_webui_environment_variables_webui_admin_email: ""
+open_webui_environment_variables_webui_admin_password: ""
+open_webui_environment_variables_webui_admin_name: Admin
 
 # Specify the base URL of the Ollama API (e.g. `http://ollama:11434`).
 # The connection to Ollama is disabled when this is empty.
@@ -313,7 +326,7 @@ open_webui_environment_variables_openai_api_key: ""
 open_webui_environment_variables_enable_openai_api: "{{ open_webui_environment_variables_openai_api_base_url != '' or open_webui_environment_variables_openai_api_key != '' }}"
 
 # Control whether settings changed in the admin panel are stored in the database.
-# While this is enabled, settings such as the connections and the signup options above are read from
+# While this is enabled, settings such as the URL, the connections and the signup options above are read from
 # the environment only on the first start, and the values stored in the database are used afterwards.
 open_webui_environment_variables_enable_persistent_config: true
 

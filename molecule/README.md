@@ -47,7 +47,7 @@ Currently these testing scenarios are available:
 
 ### `default`
 
-Tests a standard Open WebUI installation with the SQLite database.
+Tests a standard Open WebUI installation with the SQLite database, and with the administrator's account set in the configuration.
 
 ### `postgres`
 

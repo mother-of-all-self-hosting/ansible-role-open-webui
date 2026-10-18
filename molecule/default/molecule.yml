@@ -50,8 +50,17 @@ provisioner:
         open_webui_hostname: localhost
         open_webui_container_labels_traefik_enabled: false
         open_webui_container_http_host_bind_port: "{{ open_webui_molecule_http_bind_port }}"
+        # Deliberately not the image's own default (8080), so that Open WebUI
+        # answering at all proves that the role passed the port to the process.
+        open_webui_container_http_port: 8081
         open_webui_database_type: sqlite
         open_webui_environment_variables_webui_secret_key: molecule-secret-key
+
+        # The administrator's account that Open WebUI creates on its first
+        # start, and which `verify.yml` signs in with.
+        open_webui_environment_variables_webui_admin_email: molecule@example.com
+        open_webui_environment_variables_webui_admin_password: molecule-password-1234
+        open_webui_environment_variables_webui_admin_name: Molecule
 
         # Nothing answers at this address. Open WebUI only stores the connection
         # until it is used, which is enough for `verify.yml` to read it back.

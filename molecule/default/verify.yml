@@ -13,12 +13,11 @@
   vars:
     open_webui_verify_base_url: "http://localhost:{{ open_webui_molecule_http_bind_port }}"
 
-    # Open WebUI has no unauthenticated API to speak of, so the scenario signs up
-    # an account of its own. The first account Open WebUI ever sees becomes its
-    # administrator, which is what the assertions below rely on.
-    open_webui_verify_name: Molecule
-    open_webui_verify_email: molecule@example.com
-    open_webui_verify_password: molecule-password-1234
+    # Open WebUI has no unauthenticated API to speak of, so the scenario signs in
+    # with the administrator's account that the role has Open WebUI create on
+    # its first start.
+    open_webui_verify_email: "{{ open_webui_environment_variables_webui_admin_email }}"
+    open_webui_verify_password: "{{ open_webui_environment_variables_webui_admin_password }}"
 
     open_webui_verify_units:
       - open-webui.service
@@ -116,34 +115,34 @@
             fail_msg: "/static/favicon.png returned {{ open_webui_static_favicon.status }} ({{ open_webui_static_favicon.content_type | default('no content type') }})"
             success_msg: "/static/favicon.png is served as {{ open_webui_static_favicon.content_type }}"
 
-        - name: Sign up the Open WebUI account used by this scenario
+        # Open WebUI turns sign-up off once it has created the administrator's
+        # account. Had it not created one, this would be the first account and
+        # would be let in as the administrator.
+        - name: Try to sign up another Open WebUI account
           ansible.builtin.uri:
             url: "{{ open_webui_verify_base_url }}/api/v1/auths/signup"
             method: POST
             follow_redirects: none
             body_format: json
             body:
-              name: "{{ open_webui_verify_name }}"
-              email: "{{ open_webui_verify_email }}"
-              password: "{{ open_webui_verify_password }}"
+              name: Someone else
+              email: someone-else@example.com
+              password: someone-else-password-1234
             status_code: [200, 400, 403]
             return_content: true
           register: open_webui_signup
           changed_when: false
-          no_log: true  # the response carries a session token
+          no_log: true  # a successful response carries a session token
 
-        - name: Assert the first account to sign up became the administrator
+        - name: Assert Open WebUI refused the sign-up
           ansible.builtin.assert:
             that:
-              - open_webui_signup.status == 200
-              - open_webui_signup.json.role == 'admin'
-              - open_webui_signup.json.email == open_webui_verify_email
-              - open_webui_signup.json.token | length > 0
-            fail_msg: "Signing up returned {{ open_webui_signup.status }} with role {{ open_webui_signup.json.role | default('none') }}"
-            success_msg: "Signing up created {{ open_webui_signup.json.email }} as {{ open_webui_signup.json.role }}"
+              - open_webui_signup.status == 403
+            fail_msg: "Signing up returned {{ open_webui_signup.status }} instead of 403"
+            success_msg: "Signing up is refused, as the administrator's account already exists"
 
-        # Signing up hands out a token without ever checking a password, so the
-        # sign-in is what proves that the account was stored and can be read back.
+        # Signing in is what proves that Open WebUI created the account with the
+        # email address, password and name the role configured.
         - name: Sign in to Open WebUI with the account
           ansible.builtin.uri:
             url: "{{ open_webui_verify_base_url }}/api/v1/auths/signin"
@@ -164,9 +163,10 @@
             that:
               - open_webui_signin.status == 200
               - open_webui_signin.json.role == 'admin'
+              - open_webui_signin.json.name == open_webui_environment_variables_webui_admin_name
               - open_webui_signin.json.token | length > 0
-            fail_msg: "Signing in returned {{ open_webui_signin.status }}"
-            success_msg: "Signing in as {{ open_webui_verify_email }} works"
+            fail_msg: "Signing in returned {{ open_webui_signin.status }} with role {{ open_webui_signin.json.role | default('none') }}"
+            success_msg: "Signing in as {{ open_webui_verify_email }} works, as {{ open_webui_signin.json.role }}"
 
         # Open WebUI reads its connections from the environment on its first
         # start. The Ollama connection the role configured coming back from the

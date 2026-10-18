@@ -71,6 +71,8 @@ After adjusting the hostname, make sure to adjust your DNS records to point the 
 
 **Note**: hosting Open WebUI under a subpath (by configuring the `open_webui_path_prefix` variable) is not possible due to Open WebUI's technical limitations.
 
+**Note**: Open WebUI stores the URL built from the hostname in its database on its first start (see [below](#connecting-to-models)), so if you change the hostname later, change the URL in the admin panel as well.
+
 ### Set the secret key
 
 You also need to set a secret key, which Open WebUI uses to sign session tokens and encrypt sensitive data. To do so, add the following configuration to your `vars.yml` file. Make sure to replace `YOUR_SECRET_KEY_HERE` with your own value, generated with `pwgen -s 64 1` or in another way.
@@ -78,6 +80,17 @@ You also need to set a secret key, which Open WebUI uses to sign session tokens 
 ```yaml
 open_webui_environment_variables_webui_secret_key: YOUR_SECRET_KEY_HERE
 ```
+
+### Set the administrator's account details (optional)
+
+By default, the first user who signs up becomes the administrator, so anyone who reaches the instance before you can take that role. To have Open WebUI create the administrator's account on its first start instead, add the following configuration to your `vars.yml` file:
+
+```yaml
+open_webui_environment_variables_webui_admin_email: ADMIN_EMAIL_ADDRESS_HERE
+open_webui_environment_variables_webui_admin_password: ADMIN_PASSWORD_HERE
+```
+
+Generating a strong password (e.g. `pwgen -s 64 1`) is recommended for `open_webui_environment_variables_webui_admin_password`.
 
 ### Configuring database
 
@@ -164,7 +177,7 @@ If you use the MASH playbook, the shortcut commands with the [`just` program](ht
 
 After running the command for installation, the Open WebUI instance becomes available at the URL specified with `open_webui_hostname`. With the configuration above, the service is hosted at `https://example.com`.
 
-To get started, open the URL with a web browser, and create a user. The first user becomes the administrator. Users who sign up after that need to be approved by the administrator by default.
+To get started, open the URL with a web browser, and create a user or log in with the administrator's account set above. The first user becomes the administrator, and Open WebUI then turns sign-up off. To let other users sign up, turn it on again in the admin panel. They need to be approved by the administrator by default.
 
 **Note**: on its first start, Open WebUI downloads the model it uses to search documents into its data directory, which takes a while.
 
