@@ -143,6 +143,8 @@ open_webui_container_additional_networks_custom:
 
 If you run Ollama with [ansible-role-ollama](https://github.com/mother-of-all-self-hosting/ansible-role-ollama), both the container name and the container network are `ollama` by default (`mash-ollama` with the MASH playbook).
 
+**Note**: Open WebUI gives models its built-in tools in chats, so a model has to support tool calling, or Ollama refuses the chat with an error like `does not support tools`. Ollama lists `tools` among a model's capabilities in the output of `ollama show MODEL_NAME` if it does. To chat with a model which does not, turn off built-in tools for it on the admin panel.
+
 To connect it to an OpenAI-compatible API, add the following configuration to your `vars.yml` file (adapt to your needs):
 
 ```yaml
