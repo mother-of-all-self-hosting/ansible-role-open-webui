@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Patch releases are deliberately not automerged here, unlike in most other roles in this fleet.",
+    "Open WebUI applies its Alembic migrations automatically at container start (run_migrations() in open_webui/config.py, unless ENABLE_DB_MIGRATIONS is turned off), forward-only, and its patch releases do ship them: 0.11.0 -> 0.11.1 added four, among them repair_double_encoded_user_oauth, which rewrites existing rows of the user table, and 0.12.0 -> 0.12.1 added add_missing_auth_rows and add_apps.",
+    "An automerged patch would therefore rewrite the schema of the database holding the users' accounts and chats, unattended and with no way back short of restoring a backup. The Molecule run does not cover this: it installs onto an empty database, so it never performs the step from the previous release's schema, which is the only migration an automerged bump would run in production."
+  ],
+  "extends": [
+    "github>mother-of-all-self-hosting/renovate-config#v1.1.0"
+  ]
+}

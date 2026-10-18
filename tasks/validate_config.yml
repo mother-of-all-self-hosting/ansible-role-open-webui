@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2023 Julian-Samuel Gebühr
+# SPDX-FileCopyrightText: 2023 MASH project contributors
+# SPDX-FileCopyrightText: 2023-2025 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2024 noah
+# SPDX-FileCopyrightText: 2025, 2026 Suguru Hirahara
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Fail if required Open WebUI settings not defined
+  ansible.builtin.fail:
+    msg: >-
+      You need to define a required configuration setting (`{{ item }}`).
+  when: "lookup('vars', item, default='') | string | length == 0"
+  with_items:
+    - open_webui_uid
+    - open_webui_gid
+    - open_webui_hostname
+    - open_webui_path_prefix
+    - open_webui_container_network
+    - open_webui_database_type
+    - open_webui_environment_variables_webui_secret_key
+    - open_webui_python_path
+    - open_webui_python_version
+
+- name: Fail if Open WebUI logging level is invalid
+  ansible.builtin.fail:
+    msg: >-
+      open_webui_environment_variables_global_log_level must be 'CRITICAL', 'ERROR', 'WARNING', 'INFO', or 'DEBUG'
+  when: "open_webui_environment_variables_global_log_level not in ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']"
+
+- name: Fail if Open WebUI default user role is invalid
+  ansible.builtin.fail:
+    msg: >-
+      open_webui_environment_variables_default_user_role must be 'admin', 'pending', or 'user'
+  when: "open_webui_environment_variables_default_user_role not in ['admin', 'pending', 'user']"
+
+- name: Fail if Open WebUI database type is invalid
+  ansible.builtin.fail:
+    msg: >-
+      open_webui_database_type must be 'postgres' or 'sqlite'.
+  when: "open_webui_database_type not in ['postgres', 'sqlite']"
+
+- name: Run if Open WebUI + Postgres integration is enabled
+  when: open_webui_database_type == 'postgres'
+  block:
+    - name: Fail if required Open WebUI + Postgres integration settings not defined
+      ansible.builtin.fail:
+        msg: >-
+          You need to define a required configuration setting (`{{ item }}`) when `open_webui_database_type` is `postgres`
+      when: "lookup('vars', item, default='') | string | length == 0"
+      with_items:
+        - open_webui_database_password
+
+    - name: Fail if Postgres socket host path for Open WebUI is missing when Unix socket is enabled
+      ansible.builtin.fail:
+        msg: >-
+          You need to define `open_webui_database_socket_path_host` when `open_webui_database_type` is `postgres`
+          and `open_webui_database_socket_enabled` is `true`.
+      when: >-
+        open_webui_database_socket_enabled and
+        open_webui_database_socket_path_host | string | length == 0
+
+    - name: Fail if Postgres hostname for Open WebUI is missing when Unix socket is disabled
+      ansible.builtin.fail:
+        msg: >-
+          You need to define `open_webui_database_hostname` when `open_webui_database_type` is `postgres`
+          and `open_webui_database_socket_enabled` is `false`.
+      when: >-
+        not open_webui_database_socket_enabled and
+        open_webui_database_hostname | string | length == 0
+
+- name: Run if Traefik is enabled
+  when: open_webui_container_labels_traefik_enabled | bool
+  block:
+    - name: Fail if Traefik settings required for Open WebUI are not defined
+      ansible.builtin.fail:
+        msg: >-
+          You need to define a required configuration setting (`{{ item.name }}`).
+      when: "item.when | bool and lookup('vars', item.name, default='') | string | length == 0"
+      with_items:
+        - { "name": "open_webui_container_labels_traefik_hostname", when: true }
+        - { "name": "open_webui_container_labels_traefik_path_prefix", when: true }
+        - { "name": "open_webui_container_labels_traefik_middleware_basic_auth_users", when: "{{ open_webui_container_labels_traefik_middleware_basic_auth_enabled }}" }
+
+    - name: Fail if open_webui_container_labels_traefik_path_prefix is different than /
+      ansible.builtin.fail:
+        msg: >-
+          open_webui_container_labels_traefik_path_prefix (`{{ open_webui_container_labels_traefik_path_prefix }}`) must be `/`.
+          Open WebUI does not support hosting under a subpath yet.
+      when: "open_webui_container_labels_traefik_path_prefix != '/'"
+
+    # We ensure it doesn't end with a slash, because we handle both (slash and no-slash).
+    # Knowing that `open_webui_container_labels_traefik_path_prefix` does not end with a slash
+    # ensures we know how to set these routes up without having to do "does it end with a slash" checks elsewhere.
+    - name: Fail if open_webui_container_labels_traefik_path_prefix ends with a slash
+      ansible.builtin.fail:
+        msg: >-
+          open_webui_container_labels_traefik_path_prefix (`{{ open_webui_container_labels_traefik_path_prefix }}`) must either be `/` or not end with a slash (e.g. `/open-webui`).
+      when: "open_webui_container_labels_traefik_path_prefix != '/' and open_webui_container_labels_traefik_path_prefix[-1] == '/'"

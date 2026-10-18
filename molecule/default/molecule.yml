@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 spatterlight
+# SPDX-FileCopyrightText: 2026 Suguru Hirahara
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+    force: true
+driver:
+  name: docker
+platforms:
+  - name: open-webui-${MOLECULE_DISTRO:-ubuntu2604}-default
+    image: "geerlingguy/docker-${MOLECULE_DISTRO:-ubuntu2604}-ansible:latest"
+    command: ${MOLECULE_DOCKER_COMMAND:-""}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      # Docker inside the instance stores images via containerd. Its storage
+      # cannot use overlay on top of the instance's own overlay filesystem, so a
+      # volume puts it on a real filesystem.
+      - /var/lib/containerd
+    # Remove volumes along with the instance, so that local runs do not leave
+    # gigabytes behind.
+    keep_volumes: false
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      callback_result_format: yaml
+  inventory:
+    group_vars:
+      all:
+        # Helper variables
+        open_webui_debug_service_enabled: false
+        open_webui_restarts_check_enabled: true
+
+        # The port on the host that Open WebUI is published on, and which
+        # `verify.yml` sends its API requests to.
+        open_webui_molecule_http_bind_port: 8080
+
+        # Variables for Open WebUI
+        open_webui_uid: 1000
+        open_webui_gid: 1000
+        open_webui_scheme: http
+        open_webui_hostname: localhost
+        open_webui_container_labels_traefik_enabled: false
+        open_webui_container_http_host_bind_port: "{{ open_webui_molecule_http_bind_port }}"
+        # Deliberately not the image's own default (8080), so that Open WebUI
+        # answering at all proves that the role passed the port to the process.
+        open_webui_container_http_port: 8081
+        open_webui_database_type: sqlite
+        open_webui_environment_variables_webui_secret_key: molecule-secret-key
+
+        # The administrator's account that Open WebUI creates on its first
+        # start, and which `verify.yml` signs in with.
+        open_webui_environment_variables_webui_admin_email: molecule@example.com
+        open_webui_environment_variables_webui_admin_password: molecule-password-1234
+        open_webui_environment_variables_webui_admin_name: Molecule
+
+        # Nothing answers at this address. Open WebUI only stores the connection
+        # until it is used, which is enough for `verify.yml` to read it back.
+        open_webui_environment_variables_ollama_base_url: http://ollama.invalid:11434
+  env:
+    # Workaround for https://github.com/ansible/molecule/issues/4391
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/..:/.ansible/roles:/usr/share/ansible/roles:/etc/ansible/roles:~/.ansible/roles
+verifier:
+  name: ansible

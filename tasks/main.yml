@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2023 Slavi Pantaleev
+# SPDX-FileCopyrightText: 2024 noah
+# SPDX-FileCopyrightText: 2026 spatterlight
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+---
+- name: Perform Open WebUI installation tasks
+  when: open_webui_enabled | bool
+  tags:
+    - setup-all
+    - setup-open-webui
+    - install-all
+    - install-open-webui
+  block:
+    - name: Validate Open WebUI configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+    - name: Install Open WebUI
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/install.yml"
+
+- name: Perform Open WebUI uninstallation tasks
+  when: not open_webui_enabled | bool
+  tags:
+    - setup-all
+    - setup-open-webui
+  block:
+    - name: Uninstall Open WebUI
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/uninstall.yml"
