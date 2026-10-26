@@ -28,10 +28,10 @@ open_webui_python_path: "{{ open_webui_base_path }}/python"
 # The Python version of the container image.
 # Python only looks for packages below `open_webui_python_path` if the directory for its version exists
 # when Open WebUI starts, so the role creates it in advance. The Molecule scenarios check that this matches the image.
-open_webui_python_version: "3.11"
+open_webui_python_version: "3.12"
 
 # renovate: datasource=docker depName=ghcr.io/open-webui/open-webui versioning=semver
-open_webui_version: 0.12.3
+open_webui_version: 0.12.4
 
 open_webui_uid: ""
 open_webui_gid: ""
