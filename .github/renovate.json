@@ -7,5 +7,20 @@
   ],
   "extends": [
     "github>mother-of-all-self-hosting/renovate-config#v1.1.0"
+  ],
+  "packageRules": [
+    {
+      "description": "Only consider the plain `0.12.4` tags. ghcr.io/open-webui/open-webui publishes every release under two tags, `0.12.4` and `v0.12.4`, which semver treats as one version, so Renovate would otherwise write whichever the registry listed last, and `v0.12.4` fails the Molecule assertion against the version the API reports, which never carries the `v`. The rule also leaves out the flavoured `-cuda`, `-ollama` and `-slim` tags, which strict semver already skips as prereleases, and the floating `0.12`, `main`, `dev` and `latest` tags, which are not versions.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/open-webui/open-webui"
+      ],
+      "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/"
+    }
   ]
 }
