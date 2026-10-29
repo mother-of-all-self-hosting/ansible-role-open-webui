@@ -31,7 +31,7 @@ open_webui_python_path: "{{ open_webui_base_path }}/python"
 open_webui_python_version: "3.12"
 
 # renovate: datasource=docker depName=ghcr.io/open-webui/open-webui versioning=semver
-open_webui_version: 0.12.4
+open_webui_version: 0.12.5
 
 open_webui_uid: ""
 open_webui_gid: ""
