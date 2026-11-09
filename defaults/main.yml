@@ -284,7 +284,7 @@ open_webui_database_socket_path_container: /run-postgres
 open_webui_database_socket_path_host: ""
 
 open_webui_environment_variables_database_url: |-
-  postgresql://{{ open_webui_database_username }}:{{ open_webui_database_password }}@
+  postgresql://{{ open_webui_database_username | urlencode | replace('/', '%2F') }}:{{ open_webui_database_password | urlencode | replace('/', '%2F') }}@
   {%- if open_webui_database_socket_enabled -%}
   localhost/{{ open_webui_database_name }}?host={{ open_webui_database_socket_path_container }}
   {%- else -%}
