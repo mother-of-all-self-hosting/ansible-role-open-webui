@@ -58,8 +58,8 @@ provisioner:
 
         # Variables required for Open WebUI to connect to the Postgres database (via Unix socket)
         open_webui_database_type: postgres
-        open_webui_database_username: my_database_username
-        open_webui_database_password: my_database_password
+        open_webui_database_username: /#@my_database_username?%
+        open_webui_database_password: /#@my_database_password?%
         open_webui_database_sslmode: disable
         open_webui_database_name: open_webui
         open_webui_database_socket_enabled: true
