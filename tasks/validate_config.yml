@@ -16,9 +16,6 @@
   with_items:
     - open_webui_uid
     - open_webui_gid
-    - open_webui_hostname
-    - open_webui_path_prefix
-    - open_webui_container_network
     - open_webui_database_type
     - open_webui_environment_variables_webui_secret_key
     - open_webui_python_path
