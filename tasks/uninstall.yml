@@ -55,7 +55,7 @@
       failed_when: false
 
     - name: Ensure Open WebUI container network does not exist
-      when: open_webui_container_network_deletion_enabled
+      when: open_webui_container_network_deletion_enabled and open_webui_container_network != 'host'
       block:
         - name: Ensure Open WebUI container network does not exist via community.docker.docker_network
           when: devture_systemd_docker_base_container_network_creation_method == 'ansible-module'

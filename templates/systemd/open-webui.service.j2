@@ -60,9 +60,11 @@ ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} create \
       {% endfor %}
       {% endif %}
 
+{% if open_webui_container_network != 'host' %}
 {% for network in open_webui_container_additional_networks %}
 ExecStartPre={{ devture_systemd_docker_base_host_command_docker }} network connect {{ network }} {{ open_webui_identifier }}
 {% endfor %}
+{% endif %}
 
 ExecStart={{ devture_systemd_docker_base_host_command_docker }} start --attach {{ open_webui_identifier }}
 
